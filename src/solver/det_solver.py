@@ -40,6 +40,12 @@ class DetSolver(BaseSolver):
         best_stat = {
             "epoch": -1,
         }
+
+        early_stop_patience = 10
+        early_stop_min_delta = 0.001
+
+        early_stop_best_map = float("-inf")
+        early_stop_counter = 0
         if self.last_epoch > 0:
             module = self.ema.module if self.ema else self.model
             test_stats, coco_evaluator = evaluate(
@@ -200,6 +206,33 @@ class DetSolver(BaseSolver):
                                 coco_evaluator.coco_eval["bbox"].eval,
                                 self.output_dir / "eval" / name,
                             )
+                        current_map = float(test_stats["coco_eval_bbox"][0])
+
+                        if current_map > early_stop_best_map + early_stop_min_delta:
+                            early_stop_best_map = current_map
+                            early_stop_counter = 0
+
+                            print(
+                                f"[EarlyStopping] Improvement detected: "
+                                f"mAP={current_map:.4f}. "
+                                f"Best={early_stop_best_map:.4f}"
+                            )
+                        else:
+                            early_stop_counter += 1
+
+                            print(
+                                f"[EarlyStopping] No significant improvement: "
+                                f"{early_stop_counter}/{early_stop_patience}. "
+                                f"Current mAP={current_map:.4f}, "
+                                f"Best mAP={early_stop_best_map:.4f}"
+                            )
+
+                        if early_stop_counter >= early_stop_patience:
+                            print(
+                                f"[EarlyStopping] Stopping training at epoch {epoch + 1}. "
+                                f"Best validation mAP={early_stop_best_map:.4f}"
+                            )
+                            break
 
         total_time = time.time() - start_time
         total_time_str = str(datetime.timedelta(seconds=int(total_time)))
